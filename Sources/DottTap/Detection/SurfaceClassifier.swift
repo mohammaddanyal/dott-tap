@@ -74,7 +74,8 @@ struct SurfaceClassifier {
     }
 }
 
-/// Groups knocks into single / double / triple gestures. Main thread.
+/// Groups trackpad knocks into single / double / triple gestures. Main thread.
+/// (Chassis knocks use `KnockGestures`, which runs on the sensor clock.)
 final class GestureRecognizer {
     struct Gesture {
         var count: Int
@@ -125,19 +126,6 @@ final class GestureRecognizer {
     func cancel() {
         pending?.cancel()
         count = 0
-    }
-
-    /// The sensor felt the start of something that may be the next knock of this gesture.
-    /// Its verdict takes up to ~0.3 s, so hold the gesture open until then.
-    func onsetStarted(at time: TimeInterval) {
-        guard count > 0, time - lastTime <= gap + 0.05 else { return }
-        schedule(after: 0.35)
-    }
-
-    /// That jolt turned out not to be a knock: finish the gesture now if its time is up.
-    func onsetRejected() {
-        guard count > 0 else { return }
-        schedule(after: max(0.02, gap - (Clock.now() - lastTime)))
     }
 
     private func schedule(after seconds: TimeInterval) {

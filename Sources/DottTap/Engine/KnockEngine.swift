@@ -37,7 +37,14 @@ final class KnockEngine: ObservableObject {
     let detector = KnockDetector()
     private let sensor = AccelSensor()
     private lazy var rates = RateController(sensor: sensor)
+    /// Chassis knocks: grouped on the sensor thread by sample time.
+    private let gestures = KnockGestures()
+    /// Trackpad knocks: grouped on the main thread.
     private let recognizer = GestureRecognizer()
+    /// Keeps macOS from napping the app while it listens; a napped app handled knocks up to
+    /// half a second late.
+    private var listeningActivity: NSObjectProtocol?
+    private var appObserver: NSObjectProtocol?
     private let store = Store.shared
     private let runner = ActionRunner.shared
     private let reactions = Reactions()
@@ -59,23 +66,26 @@ final class KnockEngine: ObservableObject {
         // unless a knock-shaped event survives.
         let detector = self.detector
         let rates = self.rates
+        let gestures = self.gestures
         sensor.onSample = { t, x, y, z in
             detector.process(t: t, x: x, y: y, z: z)
+            gestures.tick(t, capturing: detector.isCapturing)
             rates.tick(t)
         }
         detector.onActivity = { t in rates.activity(t) }
-        detector.onOnset = { [weak self] t in
-            DispatchQueue.main.async { self?.recognizer.onsetStarted(at: t) }
-        }
-        detector.onKnock = { [weak self] t, f in
-            DispatchQueue.main.async { self?.handleKnock(at: t, features: f) }
-        }
+        detector.onKnock = { t, f in gestures.knock(at: t, features: f) }
         detector.onReject = { [weak self] t, reason, peak in
             DispatchQueue.main.async {
-                self?.recognizer.onsetRejected()
                 self?.note(String(format: "Ignored (%@)", reason), String(format: "%.3f g", peak), false)
                 self?.events.write(["kind": "reject", "reason": reason, "peak": peak], nil)
             }
+        }
+        gestures.onEvent = { [weak self] e in
+            DispatchQueue.main.async { self?.handle(e) }
+        }
+        appObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshGestureLimits() }
         }
 
         recognizer.maxCount = { [weak self] surface in
@@ -83,15 +93,7 @@ final class KnockEngine: ObservableObject {
             return self.store.maxCount(surface: surface, bundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier)
         }
         recognizer.onGesture = { [weak self] g in
-            guard let self else { return }
-            // One stray bump is the easiest accident, so a lone knock must be clearly firmer
-            // than the minimum. Doubles and triples are rare by chance and keep the normal bar.
-            if g.count == 1 && g.source == .chassis && g.peak < self.detector.tuning.minPeak * 1.5 {
-                self.note("Ignored (light single)", String(format: "%.3f g", g.peak), false)
-                self.events.write(["kind": "reject", "reason": "light single", "peak": g.peak], nil)
-                return
-            }
-            self.perform(count: g.count, surface: g.surface, source: g.source)
+            self?.perform(count: g.count, surface: g.surface, source: g.source)
         }
         recognizer.onKnock = { [weak self] n, _ in
             guard let self, self.store.settings.soundFeedback else { return }
@@ -116,8 +118,23 @@ final class KnockEngine: ObservableObject {
             }
             .store(in: &cancellables)
         store.$calibration
-            .sink { [weak self] c in self?.classifier = SurfaceClassifier(examples: c) }
+            .sink { [weak self] c in
+                guard let self else { return }
+                self.classifier = SurfaceClassifier(examples: c)
+                self.gestures.config.classifier = self.classifier
+                // Which surfaces are learned changes the longest useful gesture.
+                DispatchQueue.main.async { self.refreshGestureLimits() }
+            }
             .store(in: &cancellables)
+    }
+
+    /// Tells the sensor-thread gesture grouping how many knocks matter for each surface in
+    /// the app now in front, so a single fires at once when nothing longer is set up.
+    private func refreshGestureLimits() {
+        let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        var limits: [Surface: Int] = [:]
+        for s in Surface.allCases { limits[s] = store.maxCount(surface: s, bundleID: bundleID) }
+        gestures.config.maxCount = limits
     }
 
     // MARK: Settings & power policy
@@ -131,6 +148,12 @@ final class KnockEngine: ObservableObject {
         tune.maxPeak = (s.feel == .slap || s.allowHardHits) ? 100 : 2.5
         detector.tuning = tune
         recognizer.gap = s.gapMs / 1000
+        var g = gestures.config
+        g.gap = s.gapMs / 1000
+        g.ignoreTyping = s.ignoreWhileTyping
+        g.minPeak = tune.minPeak
+        gestures.config = g
+        refreshGestureLimits()
         phone.gapMs = Int(s.gapMs)
 
         permissionTimer?.invalidate()
@@ -179,9 +202,14 @@ final class KnockEngine: ObservableObject {
             return
         }
         if let reason {
-            if sensor.isRunning { sensor.stop(); detector.reset() }
+            if sensor.isRunning { sensor.stop(); detector.reset(); gestures.cancel() }
+            if let a = listeningActivity { ProcessInfo.processInfo.endActivity(a); listeningActivity = nil }
             state = reason.isEmpty ? .off : .paused(reason)
             return
+        }
+        if listeningActivity == nil {
+            listeningActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical], reason: "Listening for knocks")
         }
         let mode: PowerMode = power.lowPowerMode && s.powerMode != .precision ? .saver : s.powerMode
         // Live test and surface training want full detail.
@@ -220,18 +248,18 @@ final class KnockEngine: ObservableObject {
 
     // MARK: Knocks
 
-    private func handleKnock(at t: TimeInterval, features f: KnockFeatures) {
-        let s = store.settings
-        let sinceOnset = Clock.now() - t
-        if s.ignoreWhileTyping {
-            // Seconds between the last key/click and the knock (negative = it came after).
-            let key = min(Self.since(.keyDown), Self.since(.keyUp), Self.since(.flagsChanged)) - sinceOnset
-            if key < 0.32 && key > -0.2 { recognizer.onsetRejected(); note("Ignored (typing)", String(format: "%.3f g", f.peak), false); events.write(["kind": "reject", "reason": "typing"], f); return }
-        }
-        let click = min(Self.since(.leftMouseDown), Self.since(.leftMouseUp), Self.since(.rightMouseDown)) - sinceOnset
-        if click < 0.25 && click > -0.15 { recognizer.onsetRejected(); note("Ignored (click)", String(format: "%.3f g", f.peak), false); events.write(["kind": "reject", "reason": "click"], f); return }
-
-        if let surface = calibrating {
+    private func handle(_ e: KnockGestures.Event) {
+        switch e {
+        case .knock(let k):
+            note("Knock · \(k.surface.title)",
+                 String(format: "%.3f g · %@ %.0f%%", k.features.peak, k.guess.title, k.confidence * 100), true)
+            events.write(["kind": "knock", "surface": k.surface.rawValue, "guess": k.guess.rawValue, "conf": k.confidence], k.features)
+            if store.settings.soundFeedback { NSSound(named: "Tink")?.play() }
+        case .rejected(let reason, let f, let peak):
+            note("Ignored (\(reason))", String(format: "%.3f g", peak), false)
+            events.write(["kind": "reject", "reason": reason, "peak": peak], f)
+        case .teach(let f):
+            guard let surface = calibrating else { return }
             var c = store.calibration
             c[surface, default: []].append(f)
             store.calibration = c
@@ -239,15 +267,9 @@ final class KnockEngine: ObservableObject {
             calibrationCount += 1
             hud.show(symbol: surface.symbol, title: "\(calibrationCount) of \(calibrationTarget)", subtitle: surface.title)
             if calibrationCount >= calibrationTarget { stopCalibration() }
-            return
+        case .gesture(let count, let surface, _):
+            perform(count: count, surface: surface, source: .chassis)
         }
-
-        let r = classifier.classify(f)
-        let surface: Surface = r.confidence >= 0.35 ? r.surface : .anywhere
-        note("Knock · \(surface.title)",
-             String(format: "%.3f g · %@ %.0f%%", f.peak, r.surface.title, r.confidence * 100), true)
-        recognizer.knock(at: t, surface: surface, source: .chassis, peak: f.peak)
-        events.write(["kind": "knock", "surface": surface.rawValue, "guess": r.surface.rawValue, "conf": r.confidence], f)
     }
 
     private func perform(count: Int, surface: Surface, source: KnockSource) {
@@ -296,14 +318,12 @@ final class KnockEngine: ObservableObject {
         if log.count > 40 { log.removeLast(log.count - 40) }
     }
 
-    private static func since(_ type: CGEventType) -> TimeInterval {
-        CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: type)
-    }
-
     // MARK: Surface training
 
     func startCalibration(_ surface: Surface) {
         recognizer.cancel()
+        gestures.cancel()
+        gestures.config.calibrating = true
         var c = store.calibration
         c[surface] = []
         store.calibration = c
@@ -314,6 +334,7 @@ final class KnockEngine: ObservableObject {
 
     func stopCalibration() {
         calibrating = nil
+        gestures.config.calibrating = false
         applyPolicy()
     }
 

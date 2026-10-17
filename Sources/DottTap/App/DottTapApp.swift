@@ -32,9 +32,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
             let args = CommandLine.arguments
+            if let i = args.firstIndex(of: "--replay"), i + 1 < args.count {
+                Replay.run(path: args[i + 1], calibration: Store.shared.calibration)
+                exit(0)
+            }
             if let i = args.firstIndex(of: "--snapshots") {
                 let dir = i + 1 < args.count ? args[i + 1] : "snapshots"
                 Snapshots.run(to: URL(fileURLWithPath: dir))
+                exit(0)
+            }
+            // Two copies would both react to every knock (a double play/pause cancels itself
+            // out), so a second copy quits. A lock file catches copies started outside the app
+            // bundle too, which macOS's own one-instance rule doesn't.
+            guard Self.takeSingleInstanceLock() else {
+                NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+                    .first { $0 != .current }?.activate()
                 exit(0)
             }
             KnockEngine.shared.start()
@@ -42,6 +54,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 SettingsWindow.shared.show(page: .welcome)
             }
         }
+    }
+
+    private static var lockFD: Int32 = -1
+
+    private static func takeSingleInstanceLock() -> Bool {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Dott Tap", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        lockFD = open(dir.appendingPathComponent("running.lock").path, O_CREAT | O_RDWR, 0o644)
+        return lockFD >= 0 && flock(lockFD, LOCK_EX | LOCK_NB) == 0
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

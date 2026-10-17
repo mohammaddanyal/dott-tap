@@ -40,8 +40,6 @@ struct DetectorTuning {
 /// allocates nothing per sample and does a handful of multiply-adds per report.
 final class KnockDetector {
     var onKnock: ((Double, KnockFeatures) -> Void)?
-    /// A knock-sized jolt just started (its verdict follows when it has rung out).
-    var onOnset: ((Double) -> Void)?
     /// Something moved: the engine uses this to raise the sample rate for a moment.
     var onActivity: ((Double) -> Void)?
     /// Rejected spike with the reason, for the live test view.
@@ -61,10 +59,16 @@ final class KnockDetector {
     private var lastT: Double = 0
     private var prevX: Float = 0, prevY: Float = 0, prevZ: Float = 0
     private var hpX: Float = 0, hpY: Float = 0, hpZ: Float = 0
+    private var lastHPX: Float = 0, lastHPY: Float = 0, lastHPZ: Float = 0
     private var lpX: Float = 0, lpY: Float = 0, lpZ: Float = 0   // ~30 ms low-pass
     private var gX: Float = 0, gY: Float = 0, gZ: Float = -1     // gravity, ~0.6 s
     private var noise: Float = 0.002
     private var warmup = 0
+    // Smoothed (15 ms RMS) envelope of the high-passed magnitude, and how sharply the signal
+    // changes from one sample to the next. Used to spot a new knock inside a ringing one.
+    private var envSq: Float = 0
+    private var env: Float = 0
+    private var jerk: Float = 0
 
     // Ring buffer of recent high-passed samples for pre-trigger context
     private static let ringSize = 32
@@ -79,11 +83,18 @@ final class KnockDetector {
     private var peak: Float = 0
     private var peakT: Double = 0
     private var eX: Float = 0, eY: Float = 0, eZ: Float = 0, eLow: Float = 0
-    private var firstX: Float = 0, firstY: Float = 0, firstZ: Float = 0
+    // The first ~20 ms of the knock, to read which way the Mac was first pushed.
+    private static let firstSlots = 24
+    private var firstHP = [SIMD3<Float>](repeating: .zero, count: firstSlots)
+    private var firstCount = 0
     private var lastAbove: Double = 0
     private var gravityBefore = SIMD3<Float>(0, 0, -1)
     private var lastOnset: Double = -10
     private var captureSamples = 0
+    private var envPeak: Float = 0
+    private var envMinAfterPeak: Float = 0
+    private var attackJerk: Float = 0
+    private var attackT: Double = -10
     private var captureTuning = DetectorTuning()
 
     // A knock rings for 30–150 ms. Capture until it has died down, so the tail is never
@@ -91,18 +102,23 @@ final class KnockDetector {
     private let minCapture = 0.05
     private let maxCapture = 0.26
     private let quietHold = 0.02
-    private let firstJoltLength = 0.012  // seconds used for jolt direction
-    private let refractory = 0.1         // minimum spacing between knock onsets
+    private let firstJoltLength = 0.02   // seconds used for jolt direction
+    private let refractory = 0.08        // minimum spacing between knock onsets
     // Echo guard: right after a knock, the bar for the next one starts high and decays.
     private var echoPeak: Float = 0
     private var echoT: Double = -10
     // Last time the Mac was moved or shaken; knocks right after that are ignored.
     private var lastDisturbance: Double = -10
 
+    /// True while a knock is ringing out and its verdict isn't in yet. Sensor thread only.
+    var isCapturing: Bool { capturing }
+
     func reset() {
         warmup = 0
         capturing = false
         lastT = 0
+        env = 0
+        envSq = 0
     }
 
     func process(t: Double, x: Float, y: Float, z: Float) {
@@ -134,6 +150,11 @@ final class KnockDetector {
 
         let m2 = hpX * hpX + hpY * hpY + hpZ * hpZ
         let m = m2.squareRoot()
+        envSq += min(1, dt / 0.015) * (m2 - envSq)
+        env = envSq.squareRoot()
+        let jx = hpX - lastHPX, jy = hpY - lastHPY, jz = hpZ - lastHPZ
+        jerk = (jx * jx + jy * jy + jz * jz).squareRoot() * (0.00125 / dt)   // per 800 Hz step
+        lastHPX = hpX; lastHPY = hpY; lastHPZ = hpZ
         let lowX = lpX - gX, lowY = lpY - gY, lowZ = lpZ - gZ
         let low2 = lowX * lowX + lowY * lowY + lowZ * lowZ
 
@@ -151,9 +172,27 @@ final class KnockDetector {
         }
 
         if capturing {
+            let elapsed = t - captureStart
+            if elapsed <= 0.015 { attackJerk = max(attackJerk, jerk) }
+            if env > envPeak { envPeak = env; envMinAfterPeak = env }
+            envMinAfterPeak = min(envMinAfterPeak, env)
+            // A second knock landing while the first still rings: close the first one here and
+            // start the next, so quick double and triple knocks aren't merged. Either the ring
+            // has faded and the signal comes back strong, or there's an attack nearly as sharp
+            // as the first knock's that grows big within 8 ms. A ring that swells and fades on
+            // its own (common on desks) does neither.
+            if elapsed > 0.08 && jerk > 0.5 * attackJerk && envMinAfterPeak < 0.5 * envPeak { attackT = t }
+            let faded = envMinAfterPeak < 0.25 * envPeak && env > max(0.55 * envPeak, captureThreshold * 0.7)
+            let attacked = t - attackT < 0.008 && m > 0.55 * peak
+            if elapsed > 0.08 && (faded || attacked) {
+                let tune = captureTuning, threshold = captureThreshold
+                finishCapture(t: t, stillRinging: false)
+                beginCapture(t: t, dt: dt, tuning: tune, threshold: threshold)
+                accumulate(t: t, m: m, low2: low2, dt: dt)
+                return
+            }
             accumulate(t: t, m: m, low2: low2, dt: dt)
             if m > max(peak * 0.12, captureThreshold * 0.5) { lastAboveFloor = t }
-            let elapsed = t - captureStart
             if elapsed >= maxCapture {
                 finishCapture(t: t, stillRinging: m > peak * 0.25)
             } else if elapsed >= minCapture && t - lastAboveFloor >= quietHold {
@@ -186,28 +225,31 @@ final class KnockDetector {
         captureTuning = tuning
         captureStart = t
         captureThreshold = threshold
-        onOnset?(t)
         lastAboveFloor = t
         lastOnset = t
         captureSamples = 0
         peak = 0
+        envPeak = env
+        envMinAfterPeak = env
+        attackJerk = jerk
+        attackT = -10
         eX = 0; eY = 0; eZ = 0; eLow = 0
-        firstX = 0; firstY = 0; firstZ = 0
+        firstCount = 0
         gravityBefore = SIMD3(gX, gY, gZ)
-        // Include a few samples from just before the threshold crossing.
+        // Include a few samples from just before the threshold crossing in the energy.
         let pre = min(Self.ringSize - 1, max(1, Int(0.006 / Double(dt))))
         for k in 1...pre {
             let s = ring[(ringIdx - 1 - k + Self.ringSize * 2) & (Self.ringSize - 1)]
             eX += s.x * s.x * dt; eY += s.y * s.y * dt; eZ += s.z * s.z * dt; eLow += s.w * dt
-            firstX += s.x; firstY += s.y; firstZ += s.z
         }
     }
 
     private func accumulate(t: Double, m: Float, low2: Float, dt: Float) {
         captureSamples += 1
         eX += hpX * hpX * dt; eY += hpY * hpY * dt; eZ += hpZ * hpZ * dt; eLow += low2 * dt
-        if t - captureStart <= firstJoltLength {
-            firstX += hpX; firstY += hpY; firstZ += hpZ
+        if t - captureStart <= firstJoltLength && firstCount < Self.firstSlots {
+            firstHP[firstCount] = SIMD3(hpX, hpY, hpZ)
+            firstCount += 1
         }
         if m > peak { peak = m; peakT = t }
         if m > peak * 0.25 { lastAbove = t }
@@ -229,11 +271,19 @@ final class KnockDetector {
         if captureStart - lastDisturbance < 0.8 { onReject?(captureStart, "handling", peak); return }
         if peak > tune.maxPeak { onReject?(captureStart, "too hard", peak); return }
 
-        let fNorm = max((firstX * firstX + firstY * firstY + firstZ * firstZ).squareRoot(), 1e-9)
+        // Direction of the first big push: the first sample that reaches half of the opening
+        // swing. Reading it this way ignores what's left of an earlier knock still ringing.
+        var first = SIMD3<Float>(0, 0, 1)
+        var biggest: Float = 0
+        for i in 0..<firstCount { biggest = max(biggest, simd_length(firstHP[i])) }
+        for i in 0..<firstCount where simd_length(firstHP[i]) >= biggest * 0.5 {
+            first = firstHP[i] / max(simd_length(firstHP[i]), 1e-9)
+            break
+        }
         let features = KnockFeatures(
             peak: peak,
             ex: eX / max(eHigh, 1e-12), ey: eY / max(eHigh, 1e-12), ez: eZ / max(eHigh, 1e-12),
-            sx: firstX / fNorm, sy: firstY / fNorm, sz: firstZ / fNorm,
+            sx: first.x, sy: first.y, sz: first.z,
             decayMs: decayMs,
             lowShare: eLow / total,
             rateHz: Float(Double(captureSamples) / max(t - captureStart, 0.001)))

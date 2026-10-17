@@ -107,6 +107,11 @@ SPU accelerometer ──► high-pass filter ──► knock detector ──► 
 - **Not counting echoes.** A knock rings for 30 to 150 ms. Dott Tap waits for the ring to
   fade, then raises the bar for the next knock and lowers it again over the next few
   hundred milliseconds, so a ring-out is never read as a second knock.
+- **Not merging quick knocks.** A second knock can land while the first is still ringing.
+  It shows up as a sharp attack, or as the signal coming back strong after the ring faded,
+  and starts a new knock. A ring that swells and fades on its own does neither.
+- **Counting on the sensor's clock.** Single, double and triple are decided from the
+  sensor's own sample timestamps, so a busy Mac can't cut a triple knock short.
 - **Telling surfaces apart.** Each surface shakes the Mac in its own direction. On our
   test Mac, a screen knock moves it sideways, a desk knock comes up through the rubber
   feet, and a palm rest knock pushes down. The app learns from 8 of your knocks per
