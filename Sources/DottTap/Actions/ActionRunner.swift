@@ -92,6 +92,9 @@ final class ActionRunner {
         // Screenshots: the system's own shortcuts, so they save where the user chose.
         case .screenshotFull: Keys.press(Keys.three, [.maskCommand, .maskShift])
         case .screenshotArea: Keys.press(Keys.four, [.maskCommand, .maskShift])
+        // Adding Control sends the picture to the clipboard instead of a file.
+        case .screenshotFullClipboard: Keys.press(Keys.three, [.maskCommand, .maskShift, .maskControl])
+        case .screenshotAreaClipboard: Keys.press(Keys.four, [.maskCommand, .maskShift, .maskControl])
         case .screenshotTool: Keys.press(Keys.five, [.maskCommand, .maskShift])
 
         // Automation

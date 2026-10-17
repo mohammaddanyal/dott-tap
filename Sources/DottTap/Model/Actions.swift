@@ -26,7 +26,7 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
     // Editing
     case copy, paste, cut, undo, redo, selectAll, save
     // Screenshots
-    case screenshotFull, screenshotArea, screenshotTool
+    case screenshotFull, screenshotArea, screenshotFullClipboard, screenshotAreaClipboard, screenshotTool
     // Automation
     case keyboardShortcut, typeText, openApp, openURL, runShortcut, shellCommand, appleScript
     // Reactions
@@ -79,6 +79,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .save: "Save"
         case .screenshotFull: "Screenshot"
         case .screenshotArea: "Screenshot of an area"
+        case .screenshotFullClipboard: "Screenshot to clipboard"
+        case .screenshotAreaClipboard: "Area screenshot to clipboard"
         case .screenshotTool: "Screenshot toolbar"
         case .keyboardShortcut: "Press a shortcut…"
         case .typeText: "Type text…"
@@ -144,6 +146,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .save: "square.and.arrow.down"
         case .screenshotFull: "camera.viewfinder"
         case .screenshotArea: "crop"
+        case .screenshotFullClipboard: "clipboard"
+        case .screenshotAreaClipboard: "rectangle.dashed.and.paperclip"
         case .screenshotTool: "camera.on.rectangle"
         case .keyboardShortcut: "command"
         case .typeText: "keyboard"
@@ -175,7 +179,7 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
              .missionControl, .showDesktop, .appLauncher, .spaceLeft, .spaceRight, .nextTab, .previousTab,
              .newTab, .closeTab, .minimizeWindow, .fullScreen, .hideApp, .quitApp, .switchApp: .windows
         case .copy, .paste, .cut, .undo, .redo, .selectAll, .save: .editing
-        case .screenshotFull, .screenshotArea, .screenshotTool: .capture
+        case .screenshotFull, .screenshotArea, .screenshotFullClipboard, .screenshotAreaClipboard, .screenshotTool: .capture
         case .keyboardShortcut, .typeText, .openApp, .openURL, .runShortcut, .shellCommand, .appleScript: .automation
         case .reactFlash, .reactShockwave, .reactGlitch, .reactText, .reactConfetti, .reactBall,
              .reactCombo, .reactStack, .reactBlackHole, .reactRandom: .reactions
@@ -203,7 +207,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .playPause, .nextTrack, .previousTrack, .volumeUp, .volumeDown, .mute, .brightnessUp, .brightnessDown,
              .spotlight, .spaceLeft, .spaceRight, .nextTab, .previousTab, .newTab, .closeTab, .minimizeWindow,
              .fullScreen, .hideApp, .quitApp, .switchApp, .copy, .paste, .cut, .undo, .redo, .selectAll, .save,
-             .screenshotFull, .screenshotArea, .screenshotTool, .keyboardShortcut, .typeText,
+             .screenshotFull, .screenshotArea, .screenshotFullClipboard, .screenshotAreaClipboard, .screenshotTool,
+             .keyboardShortcut, .typeText,
              .minimizeAll, .restoreWindows:
             true
         default:
