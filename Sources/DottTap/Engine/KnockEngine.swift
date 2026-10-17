@@ -51,6 +51,8 @@ final class KnockEngine: ObservableObject {
     private let hud = HUD()
     private let power = PowerMonitor()
     private let trackpad = TrackpadTapMode()
+    private let swipes = TrackpadSwipes()
+    private var touchCheck: Timer?
     private let phone = PhoneRemote()
     private var classifier = SurfaceClassifier(examples: [:])
     private let events = EventLog()
@@ -104,6 +106,7 @@ final class KnockEngine: ObservableObject {
             self?.recognizer.knock(at: Clock.now(), surface: .anywhere, source: .trackpad)
         }
         phone.onGesture = { [weak self] n, s in self?.perform(count: n, surface: s, source: .phone) }
+        swipes.onSwipe = { [weak self] fingers, direction in self?.performSwipe(fingers: fingers, direction: direction) }
 
         power.onChange = { [weak self] in self?.applyPolicy() }
         power.start()
@@ -172,6 +175,12 @@ final class KnockEngine: ObservableObject {
                     }
                 }
             }
+        }
+        if s.swipesEnabled && TrackpadSwipes.isAvailable {
+            swipes.start()
+            startTouchCheck()
+        } else {
+            swipes.stop()
         }
         if s.phoneRemote {
             if !phone.isRunning || phone.port != s.phonePort || phone.token != s.phoneToken {
@@ -291,6 +300,44 @@ final class KnockEngine: ObservableObject {
             }
             runner.run(spec, knockCount: count)
         }
+    }
+
+    /// Logs once whether touch frames arrive while the trackpad is in use, so a macOS that
+    /// blocks raw touches shows up in the knock log instead of as silently dead swipes.
+    private func startTouchCheck() {
+        guard touchCheck == nil else { return }
+        var pointerSeconds = 0
+        touchCheck = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                if self.swipes.framesSeen > 0 {
+                    self.events.write(["kind": "touch", "status": "ok"], nil)
+                    timer.invalidate(); self.touchCheck = nil
+                    return
+                }
+                if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .mouseMoved) < 5 { pointerSeconds += 5 }
+                if pointerSeconds >= 60 {
+                    self.events.write(["kind": "touch", "status": "no frames while pointer moved"], nil)
+                    timer.invalidate(); self.touchCheck = nil
+                }
+            }
+        }
+    }
+
+    private func performSwipe(fingers: Int, direction: SwipeDirection) {
+        let spec = store.settings.swipes[direction.rawValue] ?? .none
+        let name = "\(fingers == 4 ? "Four" : "\(fingers)")-finger \(direction.title.lowercased())"
+        lastGesture = name
+        events.write(["kind": "swipe", "fingers": fingers, "direction": direction.rawValue, "action": spec.kind.rawValue], nil)
+        guard spec.kind != .none else { return }
+        if spec.kind.needsAccessibility && !ActionRunner.hasAccessibility {
+            hud.show(symbol: "lock.shield", title: "Needs Accessibility", subtitle: "Open Dott Tap settings to allow it")
+            return
+        }
+        if store.settings.showHUD && spec.kind.category != .reactions {
+            hud.show(symbol: spec.kind.symbol, title: name, subtitle: spec.summary)
+        }
+        runner.run(spec)
     }
 
     /// Sample state for screenshots.

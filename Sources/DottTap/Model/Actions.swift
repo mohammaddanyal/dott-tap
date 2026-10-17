@@ -20,6 +20,7 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
     case lockScreen, sleepDisplay, sleepMac, screenSaver, brightnessUp, brightnessDown,
          toggleDarkMode, spotlight, toggleKnocking
     // Windows & desktops
+    case minimizeAll, restoreWindows, hideAllApps
     case missionControl, showDesktop, appLauncher, spaceLeft, spaceRight,
          nextTab, previousTab, newTab, closeTab, minimizeWindow, fullScreen, hideApp, quitApp, switchApp
     // Editing
@@ -52,6 +53,9 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .toggleDarkMode: "Dark / Light mode"
         case .spotlight: "Spotlight"
         case .toggleKnocking: "Pause knocks for 10 min"
+        case .minimizeAll: "Minimise all windows"
+        case .restoreWindows: "Bring windows back"
+        case .hideAllApps: "Hide all apps"
         case .missionControl: "Mission Control"
         case .showDesktop: "Show desktop"
         case .appLauncher: "Apps launcher"
@@ -114,6 +118,9 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .toggleDarkMode: "circle.lefthalf.filled"
         case .spotlight: "magnifyingglass"
         case .toggleKnocking: "pause.circle"
+        case .minimizeAll: "dock.arrow.down.rectangle"
+        case .restoreWindows: "dock.arrow.up.rectangle"
+        case .hideAllApps: "eye.slash.circle"
         case .missionControl: "rectangle.3.group"
         case .showDesktop: "menubar.dock.rectangle"
         case .appLauncher: "square.grid.3x3.fill"
@@ -164,7 +171,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .playPause, .nextTrack, .previousTrack, .volumeUp, .volumeDown, .mute: .media
         case .lockScreen, .sleepDisplay, .sleepMac, .screenSaver, .brightnessUp, .brightnessDown,
              .toggleDarkMode, .spotlight, .toggleKnocking: .system
-        case .missionControl, .showDesktop, .appLauncher, .spaceLeft, .spaceRight, .nextTab, .previousTab,
+        case .minimizeAll, .restoreWindows, .hideAllApps,
+             .missionControl, .showDesktop, .appLauncher, .spaceLeft, .spaceRight, .nextTab, .previousTab,
              .newTab, .closeTab, .minimizeWindow, .fullScreen, .hideApp, .quitApp, .switchApp: .windows
         case .copy, .paste, .cut, .undo, .redo, .selectAll, .save: .editing
         case .screenshotFull, .screenshotArea, .screenshotTool: .capture
@@ -195,7 +203,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .playPause, .nextTrack, .previousTrack, .volumeUp, .volumeDown, .mute, .brightnessUp, .brightnessDown,
              .spotlight, .spaceLeft, .spaceRight, .nextTab, .previousTab, .newTab, .closeTab, .minimizeWindow,
              .fullScreen, .hideApp, .quitApp, .switchApp, .copy, .paste, .cut, .undo, .redo, .selectAll, .save,
-             .screenshotFull, .screenshotArea, .screenshotTool, .keyboardShortcut, .typeText:
+             .screenshotFull, .screenshotArea, .screenshotTool, .keyboardShortcut, .typeText,
+             .minimizeAll, .restoreWindows:
             true
         default:
             false

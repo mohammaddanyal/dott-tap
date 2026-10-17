@@ -16,7 +16,7 @@ enum Snapshots {
         seedWaveform(engine.detector.monitor)
 
         let nav = SettingsWindow.shared.nav
-        let pages: [(SettingsPage, String)] = [(.gestures, "gestures"), (.surfaces, "surfaces"), (.test, "test"),
+        let pages: [(SettingsPage, String)] = [(.gestures, "gestures"), (.swipes, "swipes"), (.surfaces, "surfaces"), (.test, "test"),
                                                (.general, "general"), (.remote, "remote")]
         for (name, mode) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             for (page, file) in pages {

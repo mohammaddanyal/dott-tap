@@ -56,6 +56,9 @@ final class ActionRunner {
         case .toggleKnocking: onPauseRequest?(600)
 
         // Windows & desktops
+        case .minimizeAll: Windows.minimizeAll()
+        case .restoreWindows: Windows.restore()
+        case .hideAllApps: Windows.hideAllApps()
         case .missionControl: openApp(path: "/System/Applications/Mission Control.app")
         case .showDesktop: shell("/System/Applications/Mission Control.app/Contents/MacOS/Mission Control", ["1"])
         case .appLauncher:
@@ -144,6 +147,77 @@ final class ActionRunner {
             var error: NSDictionary?
             NSAppleScript(source: source)?.executeAndReturnError(&error)
         }
+    }
+}
+
+/// Window-wide actions through the Accessibility API. AX calls go to every app over IPC,
+/// so they run off the main thread.
+enum Windows {
+    private static let queue = DispatchQueue(label: "DottTap.windows", qos: .userInitiated)
+    /// Windows the last "minimise all" put in the Dock, so "bring back" restores just those.
+    private static var minimizedByUs: [AXUIElement] = []
+
+    static func minimizeAll() {
+        let apps = visibleApps()
+        queue.async {
+            var done: [AXUIElement] = []
+            for pid in apps {
+                for w in windows(of: pid) where isStandard(w) && !isMinimized(w) {
+                    if AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanTrue) == .success {
+                        done.append(w)
+                    }
+                }
+            }
+            if !done.isEmpty { minimizedByUs = done }
+        }
+    }
+
+    static func restore() {
+        let apps = visibleApps()
+        queue.async {
+            let targets = minimizedByUs.isEmpty
+                ? apps.flatMap { windows(of: $0) }.filter { isStandard($0) && isMinimized($0) }
+                : minimizedByUs
+            for w in targets { AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanFalse) }
+            minimizedByUs = []
+        }
+    }
+
+    static func hideAllApps() {
+        for app in NSWorkspace.shared.runningApplications
+        where app.activationPolicy == .regular && app.processIdentifier != getpid() && app.bundleIdentifier != "com.apple.finder" {
+            app.hide()
+        }
+        // Finder can't be hidden while it's the desktop; close the clutter instead.
+        if let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first {
+            finder.hide()
+        }
+    }
+
+    private static func visibleApps() -> [pid_t] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && !$0.isHidden && $0.processIdentifier != getpid() }
+            .map(\.processIdentifier)
+    }
+
+    private static func windows(of pid: pid_t) -> [AXUIElement] {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.5)   // a hung app shouldn't stall the rest
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success else { return [] }
+        return value as? [AXUIElement] ?? []
+    }
+
+    private static func isStandard(_ w: AXUIElement) -> Bool {
+        var sub: CFTypeRef?
+        AXUIElementCopyAttributeValue(w, kAXSubroleAttribute as CFString, &sub)
+        return (sub as? String) == kAXStandardWindowSubrole as String
+    }
+
+    private static func isMinimized(_ w: AXUIElement) -> Bool {
+        var v: CFTypeRef?
+        AXUIElementCopyAttributeValue(w, kAXMinimizedAttribute as CFString, &v)
+        return (v as? Bool) ?? false
     }
 }
 

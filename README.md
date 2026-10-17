@@ -34,9 +34,12 @@ No extra hardware, no admin password, and it's free.
 - **Single, double and triple knocks**, each with its own action.
 - **Knows where you knocked.** Teach it 8 knocks on the screen, the desk and the palm
   rest, and each surface can do something different. On our test Mac it gets 95% right.
+- **Four-finger swipes.** Swipe down to minimise every window at once, swipe up to bring
+  them back. Left and right can do anything else you pick.
 - **Different gestures per app.** Next slide in Keynote, mute in Zoom, skip in Spotify.
 - **55+ actions**: play/pause, next track, volume, brightness, lock screen, sleep display,
-  Mission Control, show desktop, switch desktops, browser tabs, copy/paste/undo,
+  minimise all windows, hide all apps, Mission Control, show desktop, switch desktops,
+  browser tabs, copy/paste/undo,
   screenshots, any keyboard shortcut, type text, open an app or website, run an Apple
   Shortcut, a shell command or an AppleScript.
 - **Reactions for fun**: screen flash, shockwave, glitch, your own text, confetti,
@@ -57,6 +60,7 @@ No extra hardware, no admin password, and it's free.
   <img src="docs/screens/general-dark.png" alt="Knock feel, timing and battery settings" width="49%">
 </p>
 <p align="center">
+  <img src="docs/screens/swipes-light.png" alt="Four-finger swipe gestures: swipe down to minimise all windows, up to bring them back" width="49%">
   <img src="docs/screens/menu-dark.png" alt="Menu bar" width="300">
 </p>
 
@@ -83,6 +87,8 @@ Want screen and desk to do different things? Open **Settings → Screen & desk**
 | MacBook Air / Pro with M2, M3, M4 or newer | ✅ | ✅ |
 | MacBook with M1 | Not sure yet, [tell us](https://github.com/mohammaddanyal/dott-tap/issues/new?template=mac_report.md) | ✅ |
 | iMac, Mac mini, Mac Studio | No motion sensor | ✅ |
+
+Four-finger swipes work on any Mac with a built-in trackpad or a Magic Trackpad.
 
 Needs macOS 14 Sonoma or later. Tested on a MacBook Air M3 with macOS 27.
 
@@ -162,6 +168,11 @@ A single knock is the easiest to make by accident.
 **It misses my knocks.**
 Open **Knock test** and watch the graph while you knock. If your knocks don't reach the
 dashed line, choose "Gentle tap" or move the fine-tune slider left.
+
+**My four-finger swipe down also opens App Exposé.**
+macOS uses four-finger swipes up and down for Mission Control and App Exposé. Open
+System Settings → Trackpad → More Gestures and set both to three fingers. Dott Tap shows
+a reminder on its Swipe gestures page while they overlap.
 
 **Why isn't it on the App Store?**
 Reading the motion sensor uses a private hardware interface, which the App Store doesn't allow.

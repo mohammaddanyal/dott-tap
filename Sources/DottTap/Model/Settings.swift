@@ -140,6 +140,42 @@ struct Settings: Codable, Equatable {
     var onboarded = false
     var bindings = Bindings.defaults
     var apps: [AppProfile] = []
+    var swipesEnabled = true
+    /// Four-finger swipe actions, keyed by direction ("down", "up", "left", "right").
+    var swipes: [String: ActionSpec] = [
+        SwipeDirection.down.rawValue: ActionSpec(kind: .minimizeAll),
+        SwipeDirection.up.rawValue: ActionSpec(kind: .restoreWindows),
+    ]
+}
+
+extension Settings {
+    /// Reads saved settings field by field, so a setting added in a newer version takes its
+    /// default instead of making the whole file unreadable (which would reset everything).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Settings()
+        func v<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T { (try? c.decodeIfPresent(T.self, forKey: key)) ?? fallback }
+        enabled = v(.enabled, d.enabled)
+        feel = v(.feel, d.feel)
+        fineTune = v(.fineTune, d.fineTune)
+        gapMs = v(.gapMs, d.gapMs)
+        powerMode = v(.powerMode, d.powerMode)
+        pauseOnLowBattery = v(.pauseOnLowBattery, d.pauseOnLowBattery)
+        ignoreWhileTyping = v(.ignoreWhileTyping, d.ignoreWhileTyping)
+        allowHardHits = v(.allowHardHits, d.allowHardHits)
+        soundFeedback = v(.soundFeedback, d.soundFeedback)
+        showHUD = v(.showHUD, d.showHUD)
+        trackpadMode = v(.trackpadMode, d.trackpadMode)
+        trackpadModifier = v(.trackpadModifier, d.trackpadModifier)
+        phoneRemote = v(.phoneRemote, d.phoneRemote)
+        phonePort = v(.phonePort, d.phonePort)
+        phoneToken = v(.phoneToken, d.phoneToken)
+        onboarded = v(.onboarded, d.onboarded)
+        bindings = v(.bindings, d.bindings)
+        apps = v(.apps, d.apps)
+        swipesEnabled = v(.swipesEnabled, d.swipesEnabled)
+        swipes = v(.swipes, d.swipes)
+    }
 }
 
 extension Bindings {

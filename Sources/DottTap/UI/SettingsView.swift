@@ -2,13 +2,14 @@ import ServiceManagement
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case welcome, general, gestures, apps, surfaces, test, remote, permissions
+    case welcome, general, gestures, swipes, apps, surfaces, test, remote, permissions
     var id: String { rawValue }
     var title: String {
         switch self {
         case .welcome: "Welcome"
         case .general: "General"
         case .gestures: "Gestures"
+        case .swipes: "Swipe gestures"
         case .apps: "Per-app gestures"
         case .surfaces: "Screen & desk"
         case .test: "Knock test"
@@ -21,6 +22,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .welcome: "hand.wave"
         case .general: "gearshape"
         case .gestures: "hand.tap"
+        case .swipes: "hand.draw"
         case .apps: "square.grid.2x2"
         case .surfaces: "macbook"
         case .test: "waveform.path.ecg"
@@ -50,6 +52,7 @@ struct SettingsView: View {
                 case .welcome: WelcomePage()
                 case .general: GeneralPage()
                 case .gestures: GesturesPage()
+                case .swipes: SwipesPage()
                 case .apps: AppsPage()
                 case .surfaces: SurfacesPage()
                 case .test: TestPage()
@@ -272,6 +275,83 @@ struct GestureGrid: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Swipes
+
+struct SwipesPage: View {
+    @EnvironmentObject private var store: Store
+    @StateObject private var vertical = Box(TrackpadSwipes.systemUsesFourFingerVertical)
+    @StateObject private var horizontal = Box(TrackpadSwipes.systemUsesFourFingerHorizontal)
+    private let timer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PageHeader(title: "Swipe gestures",
+                           text: "Swipe with four fingers on the trackpad. Swipe down to minimise every window, swipe up to bring them back.")
+                Toggle("Four-finger swipes", isOn: $store.settings.swipesEnabled)
+                    .toggleStyle(.switch)
+
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                    ForEach(SwipeDirection.allCases) { dir in
+                        GridRow {
+                            Label(dir.title, systemImage: dir.symbol)
+                                .font(.headline)
+                                .frame(width: 150, alignment: .leading)
+                            ActionCell(spec: Binding(get: { store.settings.swipes[dir.rawValue] },
+                                                     set: { store.settings.swipes[dir.rawValue] = $0 }),
+                                       inheritLabel: "Do nothing",
+                                       disabledNote: note(for: dir))
+                                .frame(maxWidth: 360)
+                        }
+                    }
+                }
+                .disabled(!store.settings.swipesEnabled)
+                .opacity(store.settings.swipesEnabled ? 1 : 0.5)
+
+                if vertical.value || horizontal.value {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("macOS uses some four-finger swipes too", systemImage: "exclamationmark.triangle")
+                            .font(.headline)
+                        Text(conflictText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open Trackpad settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Trackpad-Settings.extension")!)
+                        }
+                    }
+                    .font(.callout)
+                    .padding(14)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            .padding(24)
+        }
+        .onReceive(timer) { _ in
+            CFPreferencesAppSynchronize("com.apple.AppleMultitouchTrackpad" as CFString)
+            let v = TrackpadSwipes.systemUsesFourFingerVertical, h = TrackpadSwipes.systemUsesFourFingerHorizontal
+            if vertical.value != v { vertical.value = v }
+            if horizontal.value != h { horizontal.value = h }
+        }
+    }
+
+    private func note(for dir: SwipeDirection) -> String? {
+        switch dir {
+        case .up, .down: vertical.value ? "macOS uses this too" : nil
+        case .left, .right: horizontal.value ? "macOS uses this too" : nil
+        }
+    }
+
+    private var conflictText: String {
+        var parts: [String] = []
+        if vertical.value {
+            parts.append("Swiping up or down with four fingers also opens Mission Control or App Exposé. In Trackpad settings, open More Gestures and set Mission Control and App Exposé to three fingers.")
+        }
+        if horizontal.value {
+            parts.append("Swiping left or right with four fingers also switches desktops. Set \u{201C}Swipe between full-screen apps\u{201D} to three fingers there if you want those for Dott Tap.")
+        }
+        return parts.joined(separator: " ")
     }
 }
 
