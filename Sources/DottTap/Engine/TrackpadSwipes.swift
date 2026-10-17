@@ -40,6 +40,9 @@ final class TrackpadSwipes {
     private var running = false
     /// Touch frames seen since start; tells whether macOS lets the app read the trackpad.
     private(set) var framesSeen = 0
+    /// When fingers were last on the trackpad (`Clock` seconds). Fingers landing on the
+    /// trackpad jolt the Mac like a knock, so knocks near this time are ignored.
+    static var lastTouch: Double = -10
 
     // Gesture state (multitouch thread)
     private var tracking = false
@@ -104,6 +107,7 @@ final class TrackpadSwipes {
 
     private func frame(_ touches: UnsafeMutableRawPointer?, _ count: Int) {
         framesSeen &+= 1
+        Self.lastTouch = Clock.now()
         guard let touches, count > 0 else {
             tracking = false
             fired = false

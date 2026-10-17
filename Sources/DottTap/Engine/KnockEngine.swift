@@ -53,6 +53,7 @@ final class KnockEngine: ObservableObject {
     private let trackpad = TrackpadTapMode()
     private let swipes = TrackpadSwipes()
     private var touchCheck: Timer?
+    private var lastPermissionPrompt = Date.distantPast
     private let phone = PhoneRemote()
     private var classifier = SurfaceClassifier(examples: [:])
     private let events = EventLog()
@@ -176,11 +177,11 @@ final class KnockEngine: ObservableObject {
                 }
             }
         }
-        if s.swipesEnabled && TrackpadSwipes.isAvailable {
+        // Touch reading stays on even with swipes switched off: it costs nothing while no
+        // fingers are down, and it's what keeps trackpad use from counting as knocks.
+        if TrackpadSwipes.isAvailable {
             swipes.start()
             startTouchCheck()
-        } else {
-            swipes.stop()
         }
         if s.phoneRemote {
             if !phone.isRunning || phone.port != s.phonePort || phone.token != s.phoneToken {
@@ -325,13 +326,19 @@ final class KnockEngine: ObservableObject {
     }
 
     private func performSwipe(fingers: Int, direction: SwipeDirection) {
+        guard store.settings.swipesEnabled else { return }
         let spec = store.settings.swipes[direction.rawValue] ?? .none
         let name = "\(fingers == 4 ? "Four" : "\(fingers)")-finger \(direction.title.lowercased())"
         lastGesture = name
         events.write(["kind": "swipe", "fingers": fingers, "direction": direction.rawValue, "action": spec.kind.rawValue], nil)
         guard spec.kind != .none else { return }
         if spec.kind.needsAccessibility && !ActionRunner.hasAccessibility {
-            hud.show(symbol: "lock.shield", title: "Needs Accessibility", subtitle: "Open Dott Tap settings to allow it")
+            events.write(["kind": "blocked", "action": spec.kind.rawValue, "reason": "accessibility"], nil)
+            hud.show(symbol: "lock.shield", title: "Allow Accessibility first", subtitle: "Dott Tap can’t minimise windows without it")
+            if Date().timeIntervalSince(lastPermissionPrompt) > 60 {
+                lastPermissionPrompt = Date()
+                SettingsWindow.shared.show(page: .permissions)
+            }
             return
         }
         if store.settings.showHUD && spec.kind.category != .reactions {

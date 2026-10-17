@@ -17,6 +17,18 @@ struct MenuBarView: View {
                     .labelsHidden()
             }
 
+            if !ActionRunner.hasAccessibility {
+                Button {
+                    SettingsWindow.shared.show(page: .permissions)
+                } label: {
+                    Label("Allow Accessibility so actions can run", systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.orange)
+            }
+
             HStack(spacing: 8) {
                 Image(systemName: "hand.tap").foregroundStyle(.secondary)
                 Text(engine.lastGesture).font(.callout)

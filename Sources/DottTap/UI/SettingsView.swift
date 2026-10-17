@@ -452,8 +452,18 @@ struct PermissionsPage: View {
                         Button("Allow…") { ActionRunner.requestAccessibility() }
                     }
                 }
-                Text("Lets Dott Tap press keys for you (media keys, shortcuts, copy/paste, screenshots, switching desktops) and run Trackpad Tap Mode.")
+                Text("Lets Dott Tap press keys for you (media keys, shortcuts, copy/paste, screenshots, switching desktops), minimise windows and run Trackpad Tap Mode.")
                     .font(.caption).foregroundStyle(.secondary)
+                if !trusted.value {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Already switched on in the list, but still not allowed?").font(.callout.weight(.semibold))
+                        Text("That entry belongs to an older build of Dott Tap. In Accessibility settings, select Dott Tap, click the minus (−) button to remove it, then come back here and click Allow.")
+                            .font(.callout)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                }
                 Button("Open Accessibility settings") {
                     NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
                 }

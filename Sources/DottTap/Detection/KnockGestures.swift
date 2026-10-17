@@ -55,6 +55,8 @@ final class KnockGestures {
         }
         let click = min(Self.since(.leftMouseDown), Self.since(.leftMouseUp), Self.since(.rightMouseDown)) - sinceOnset
         if click < 0.25 && click > -0.15 { onEvent?(.rejected(reason: "click", features: f, peak: f.peak)); return }
+        // Fingers on the trackpad (a swipe, a tap, resting a hand) shake the Mac like a knock.
+        if TrackpadSwipes.lastTouch > t - 0.3 { onEvent?(.rejected(reason: "trackpad", features: f, peak: f.peak)); return }
 
         if c.calibrating { onEvent?(.teach(f)); return }
 
