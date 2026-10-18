@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -50,6 +51,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 exit(0)
             }
             KnockEngine.shared.start()
+            // A menu bar app that has to be reopened after every restart isn't much use, so it
+            // opens at login unless the user has turned that off. Done once, so "off" sticks.
+            if !Store.shared.settings.openAtLoginDefaulted {
+                try? SMAppService.mainApp.register()
+                Store.shared.settings.openAtLoginDefaulted = true
+            }
+            // 0 not registered, 1 on, 2 waiting for approval in System Settings, 3 not found.
+            EventLog().write(["kind": "loginItem", "status": SMAppService.mainApp.status.rawValue], nil)
             if !Store.shared.settings.onboarded {
                 SettingsWindow.shared.show(page: .welcome)
             }

@@ -80,6 +80,9 @@ No extra hardware, no admin password, and it's free.
 
 Want screen and desk to do different things? Open **Settings → Screen & desk** and teach it.
 
+Dott Tap opens by itself when you log in. To stop that, switch off **Open at login** in its
+menu bar menu.
+
 ### Which Macs
 
 | | Knock detection | Trackpad & phone modes |

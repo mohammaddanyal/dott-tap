@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 struct MenuBarView: View {
@@ -50,6 +51,16 @@ struct MenuBarView: View {
                     .font(.callout)
                 }
             }
+
+            Toggle("Open at login", isOn: Binding(
+                get: { SMAppService.mainApp.status == .enabled },
+                set: { on in
+                    try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                    store.objectWillChange.send()
+                }))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .font(.callout)
 
             Picker("Knock feel", selection: $store.settings.feel) {
                 ForEach(KnockFeel.allCases) { Text($0.title).tag($0) }

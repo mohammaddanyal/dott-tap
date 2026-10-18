@@ -141,6 +141,8 @@ struct Settings: Codable, Equatable {
     var bindings = Bindings.defaults
     var apps: [AppProfile] = []
     var swipesEnabled = true
+    /// Set once Dott Tap has added itself to Login Items, so turning it off later sticks.
+    var openAtLoginDefaulted = false
     /// Four-finger swipe actions, keyed by direction ("down", "up", "left", "right").
     var swipes: [String: ActionSpec] = [
         SwipeDirection.down.rawValue: ActionSpec(kind: .minimizeAll),
@@ -175,6 +177,7 @@ extension Settings {
         apps = v(.apps, d.apps)
         swipesEnabled = v(.swipesEnabled, d.swipesEnabled)
         swipes = v(.swipes, d.swipes)
+        openAtLoginDefaulted = v(.openAtLoginDefaulted, d.openAtLoginDefaulted)
     }
 }
 
