@@ -77,6 +77,10 @@ struct MenuBarView: View {
                         .disabled(!store.settings.enabled)
                 }
                 Spacer()
+                Button {
+                    engine.ejectDrives()
+                } label: { Image(systemName: "eject") }
+                    .help("Eject drives safely")
                 Button("Settings…") { SettingsWindow.shared.show() }
                 Button("Quit") { NSApp.terminate(nil) }
             }

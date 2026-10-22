@@ -18,7 +18,7 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
     case playPause, nextTrack, previousTrack, volumeUp, volumeDown, mute
     // System
     case lockScreen, sleepDisplay, sleepMac, screenSaver, brightnessUp, brightnessDown,
-         toggleDarkMode, spotlight, toggleKnocking
+         toggleDarkMode, spotlight, toggleKnocking, ejectDrives, openDiskImages
     // Windows & desktops
     case minimizeAll, restoreWindows, hideAllApps
     case missionControl, showDesktop, appLauncher, spaceLeft, spaceRight,
@@ -53,6 +53,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .toggleDarkMode: "Dark / Light mode"
         case .spotlight: "Spotlight"
         case .toggleKnocking: "Pause knocks for 10 min"
+        case .ejectDrives: "Eject drives safely"
+        case .openDiskImages: "Open disk images now"
         case .minimizeAll: "Minimise all windows"
         case .restoreWindows: "Bring windows back"
         case .hideAllApps: "Hide all apps"
@@ -120,6 +122,8 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .toggleDarkMode: "circle.lefthalf.filled"
         case .spotlight: "magnifyingglass"
         case .toggleKnocking: "pause.circle"
+        case .ejectDrives: "eject"
+        case .openDiskImages: "externaldrive.badge.plus"
         case .minimizeAll: "dock.arrow.down.rectangle"
         case .restoreWindows: "dock.arrow.up.rectangle"
         case .hideAllApps: "eye.slash.circle"
@@ -174,7 +178,7 @@ enum ActionKind: String, Codable, CaseIterable, Identifiable {
         case .none: nil
         case .playPause, .nextTrack, .previousTrack, .volumeUp, .volumeDown, .mute: .media
         case .lockScreen, .sleepDisplay, .sleepMac, .screenSaver, .brightnessUp, .brightnessDown,
-             .toggleDarkMode, .spotlight, .toggleKnocking: .system
+             .toggleDarkMode, .spotlight, .toggleKnocking, .ejectDrives, .openDiskImages: .system
         case .minimizeAll, .restoreWindows, .hideAllApps,
              .missionControl, .showDesktop, .appLauncher, .spaceLeft, .spaceRight, .nextTab, .previousTab,
              .newTab, .closeTab, .minimizeWindow, .fullScreen, .hideApp, .quitApp, .switchApp: .windows

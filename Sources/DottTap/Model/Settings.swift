@@ -143,6 +143,11 @@ struct Settings: Codable, Equatable {
     var swipesEnabled = true
     /// Set once Dott Tap has added itself to Login Items, so turning it off later sticks.
     var openAtLoginDefaulted = false
+    /// Disk images to open whenever their drive is connected.
+    var autoOpenImages = true
+    var diskImages: [DiskImageEntry] = []
+    /// Set once the list was filled from images that were already open.
+    var diskImagesSeeded = false
     /// Four-finger swipe actions, keyed by direction ("down", "up", "left", "right").
     var swipes: [String: ActionSpec] = [
         SwipeDirection.down.rawValue: ActionSpec(kind: .minimizeAll),
@@ -178,6 +183,9 @@ extension Settings {
         swipesEnabled = v(.swipesEnabled, d.swipesEnabled)
         swipes = v(.swipes, d.swipes)
         openAtLoginDefaulted = v(.openAtLoginDefaulted, d.openAtLoginDefaulted)
+        autoOpenImages = v(.autoOpenImages, d.autoOpenImages)
+        diskImages = v(.diskImages, d.diskImages)
+        diskImagesSeeded = v(.diskImagesSeeded, d.diskImagesSeeded)
     }
 }
 

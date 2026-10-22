@@ -10,6 +10,8 @@ final class ActionRunner {
 
     var reactions: Reactions?
     var onPauseRequest: ((TimeInterval) -> Void)?
+    var onEjectDrives: (() -> Void)?
+    var onOpenDiskImages: (() -> Void)?
     private var previousApp: NSRunningApplication?
     private var appObserver: NSObjectProtocol?
 
@@ -54,6 +56,8 @@ final class ActionRunner {
             appleScript("tell application \"System Events\" to tell appearance preferences to set dark mode to not dark mode")
         case .spotlight: Keys.press(Keys.space, [.maskCommand])
         case .toggleKnocking: onPauseRequest?(600)
+        case .ejectDrives: onEjectDrives?()
+        case .openDiskImages: onOpenDiskImages?()
 
         // Windows & desktops
         case .minimizeAll: Windows.minimizeAll()

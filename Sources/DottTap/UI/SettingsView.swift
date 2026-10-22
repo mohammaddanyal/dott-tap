@@ -2,7 +2,7 @@ import ServiceManagement
 import SwiftUI
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case welcome, general, gestures, swipes, apps, surfaces, test, remote, permissions
+    case welcome, general, gestures, swipes, drives, apps, surfaces, test, remote, permissions
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -10,6 +10,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "General"
         case .gestures: "Gestures"
         case .swipes: "Swipe gestures"
+        case .drives: "Drives"
         case .apps: "Per-app gestures"
         case .surfaces: "Screen & desk"
         case .test: "Knock test"
@@ -23,6 +24,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape"
         case .gestures: "hand.tap"
         case .swipes: "hand.draw"
+        case .drives: "externaldrive"
         case .apps: "square.grid.2x2"
         case .surfaces: "macbook"
         case .test: "waveform.path.ecg"
@@ -53,6 +55,7 @@ struct SettingsView: View {
                 case .general: GeneralPage()
                 case .gestures: GesturesPage()
                 case .swipes: SwipesPage()
+                case .drives: DrivesPage()
                 case .apps: AppsPage()
                 case .surfaces: SurfacesPage()
                 case .test: TestPage()
@@ -352,6 +355,121 @@ struct SwipesPage: View {
             parts.append("Swiping left or right with four fingers also switches desktops. Set \u{201C}Swipe between full-screen apps\u{201D} to three fingers there if you want those for Dott Tap.")
         }
         return parts.joined(separator: " ")
+    }
+}
+
+// MARK: - Drives
+
+struct DrivesPage: View {
+    @EnvironmentObject private var store: Store
+    @ObservedObject private var drives = KnockEngine.shared.drives
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                PageHeader(title: "Drives",
+                           text: "Dott Tap opens your disk images as soon as the drive they live on is plugged in. Before you unplug, eject here so nothing is lost.")
+                Toggle("Open disk images automatically", isOn: $store.settings.autoOpenImages)
+                    .toggleStyle(.switch)
+
+                VStack(spacing: 10) {
+                    ForEach($store.settings.diskImages) { $image in
+                        row($image)
+                    }
+                    if store.settings.diskImages.isEmpty {
+                        Text("No disk images yet. Add a .sparsebundle or .dmg that lives on an external drive.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                Button("Add disk image…") { addImage() }
+
+                Divider().padding(.vertical, 4)
+
+                HStack(alignment: .center, spacing: 14) {
+                    Button {
+                        KnockEngine.shared.ejectDrives()
+                    } label: {
+                        Label("Eject drives safely", systemImage: "eject.fill")
+                    }
+                    .controlSize(.large)
+                    Text("Closes the disk images first, then ejects every external drive. Wait for “Safe to unplug”.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let message = drives.lastMessage {
+                    Label(message, systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private func row(_ image: Binding<DiskImageEntry>) -> some View {
+        let entry = image.wrappedValue
+        let state = drives.status[entry.path]
+        return HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "externaldrive.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(stateColor(state))
+                .frame(width: 40, height: 40)
+                .background(stateColor(state).opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.name).font(.headline)
+                Text(stateText(state)).font(.callout).foregroundStyle(.secondary)
+                Text(entry.path).font(.caption).foregroundStyle(.tertiary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            Toggle("Show in Finder", isOn: image.showInFinder).toggleStyle(.checkbox).font(.callout)
+            Button("Open now") { drives.openAll(reason: "button") }
+                .disabled(isOpen(state) || state == .waitingForDrive)
+            Button {
+                store.settings.diskImages.removeAll { $0.path == entry.path }
+            } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.borderless)
+                .help("Stop opening this image")
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(.quaternary.opacity(0.45)))
+    }
+
+    private func isOpen(_ s: DriveMounter.Status?) -> Bool {
+        if case .open = s { return true }
+        return false
+    }
+
+    private func stateText(_ s: DriveMounter.Status?) -> String {
+        switch s {
+        case .open(let mount): mount.isEmpty ? "Open" : "Open at \(mount)"
+        case .waitingForDrive: "Drive not connected. Opens by itself when you plug it in."
+        case .opening: "Opening…"
+        case .failed(let why): "Couldn’t open: \(why)"
+        case nil: "Not open"
+        }
+    }
+
+    private func stateColor(_ s: DriveMounter.Status?) -> Color {
+        switch s {
+        case .open: .green
+        case .failed: .orange
+        case .opening: .accentColor
+        default: .secondary
+        }
+    }
+
+    private func addImage() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.directoryURL = URL(fileURLWithPath: "/Volumes")
+        panel.message = "Choose a disk image (.sparsebundle, .sparseimage or .dmg)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let ok = ["sparsebundle", "sparseimage", "dmg", "img", "iso"].contains(url.pathExtension.lowercased())
+        guard ok, !store.settings.diskImages.contains(where: { $0.path == url.path }) else { return }
+        store.settings.diskImages.append(DiskImageEntry(path: url.path))
     }
 }
 

@@ -36,6 +36,9 @@ No extra hardware, no admin password, and it's free.
   rest, and each surface can do something different. On our test Mac it gets 95% right.
 - **Four-finger swipes.** Swipe down to minimise every window at once, swipe up to bring
   them back. Left and right can do anything else you pick.
+- **Drives.** Disk images that live on an external drive (a `.sparsebundle` or `.dmg`) open
+  by themselves the moment you plug the drive in. One click, knock or swipe ejects
+  everything safely: images first, then the drive.
 - **Different gestures per app.** Next slide in Keynote, mute in Zoom, skip in Spotify.
 - **55+ actions**: play/pause, next track, volume, brightness, lock screen, sleep display,
   minimise all windows, hide all apps, Mission Control, show desktop, switch desktops,

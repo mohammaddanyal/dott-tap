@@ -52,6 +52,7 @@ final class KnockEngine: ObservableObject {
     private let power = PowerMonitor()
     private let trackpad = TrackpadTapMode()
     private let swipes = TrackpadSwipes()
+    let drives = DriveMounter()
     private var touchCheck: Timer?
     private var lastPermissionPrompt = Date.distantPast
     private let phone = PhoneRemote()
@@ -64,6 +65,13 @@ final class KnockEngine: ObservableObject {
     func start() {
         runner.reactions = reactions
         runner.onPauseRequest = { [weak self] seconds in self?.pause(for: seconds) }
+        runner.onEjectDrives = { [weak self] in self?.ejectDrives() }
+        runner.onOpenDiskImages = { [weak self] in self?.drives.openAll(reason: "action") }
+        drives.log = { [weak self] kind, fields in
+            var f = fields; f["kind"] = kind
+            self?.events.write(f, nil)
+        }
+        drives.start()
 
         // Sensor thread: every report goes through the detector; nothing touches the main thread
         // unless a knock-shaped event survives.
@@ -182,6 +190,19 @@ final class KnockEngine: ObservableObject {
         if TrackpadSwipes.isAvailable {
             swipes.start()
             startTouchCheck()
+        }
+        drives.enabled = s.autoOpenImages
+        drives.images = s.diskImages
+        if !s.diskImagesSeeded {
+            // First run with this feature: list the images that are already open from an
+            // external drive (for example a sparse bundle opened by hand), so they reopen
+            // by themselves from now on.
+            store.settings.diskImagesSeeded = true
+            drives.currentlyOpenImages { [weak self] found in
+                guard let self else { return }
+                let known = Set(self.store.settings.diskImages.map(\.path))
+                self.store.settings.diskImages += found.filter { !known.contains($0.path) }
+            }
         }
         if s.phoneRemote {
             if !phone.isRunning || phone.port != s.phonePort || phone.token != s.phoneToken {
@@ -322,6 +343,14 @@ final class KnockEngine: ObservableObject {
                     timer.invalidate(); self.touchCheck = nil
                 }
             }
+        }
+    }
+
+    func ejectDrives() {
+        hud.show(symbol: "eject", title: "Ejecting drives…", subtitle: "Closing disk images first")
+        drives.ejectAll { [weak self] ok, message in
+            self?.hud.show(symbol: ok ? "checkmark.circle" : "exclamationmark.triangle",
+                           title: ok ? "Safe to unplug" : "Couldn’t eject yet", subtitle: message)
         }
     }
 
